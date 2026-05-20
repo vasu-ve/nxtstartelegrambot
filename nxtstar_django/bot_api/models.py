@@ -27,9 +27,8 @@ class Leader(models.Model):
 
 
 class Group(models.Model):
-    """Represents a Telegram group associated with a leader."""
+    """Represents a Telegram group."""
     id = models.BigAutoField(primary_key=True)
-    leader = models.ForeignKey(Leader, on_delete=models.CASCADE, related_name='groups')
     chat_id = models.BigIntegerField(unique=True)  # REAL telegram group id
     chat_username = models.CharField(max_length=255, null=True, blank=True)  # optional
     chat_title = models.CharField(max_length=255)
@@ -51,10 +50,9 @@ class Group(models.Model):
         db_table = 'groups'
         verbose_name = 'Group'
         verbose_name_plural = 'Groups'
-        unique_together = ('leader', 'language')
 
     def __str__(self):
-        return f"{self.chat_title} ({self.leader.display_name} - {self.language})"
+        return f"{self.chat_title} ({self.language})"
 
 
 class User(models.Model):
@@ -219,6 +217,40 @@ class InviteLink(models.Model):
             logger.error("="*80)
             raise
 
+    def revoke(self):
+        """Revoke this invite link on Telegram and mark it as expired in the DB.
+
+        After revocation, the link URL can no longer be used to join the chat,
+        even by users who previously joined through it and then left.
+        """
+        from django.conf import settings
+        import logging
+        logger = logging.getLogger(__name__)
+
+        BOT_TOKEN = settings.TELEGRAM_BOT_TOKEN
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/revokeChatInviteLink"
+        payload = {"chat_id": self.group.chat_id, "invite_link": self.invite_link}
+
+        logger.info(f"[INVITE_REVOKE] Revoking invite {self.id} for chat {self.group.chat_id}")
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.post(url, json=payload)
+                response_data = response.json()
+
+            if not response_data.get("ok"):
+                # INVITE_LINK_ALREADY_REVOKED / link not found is benign — still flip DB state.
+                logger.warning(
+                    f"[INVITE_REVOKE] Telegram refused revoke for {self.id}: {response_data}"
+                )
+            else:
+                logger.info(f"[INVITE_REVOKE] ✅ Telegram revoked {self.id}")
+        except Exception as e:
+            logger.error(f"[INVITE_REVOKE] Exception revoking {self.id}: {e}", exc_info=True)
+
+        self.status = 'expired'
+        self.save(update_fields=['status'])
+
 
 class AuditLog(models.Model):
     """Audit log for tracking user actions and system events."""
@@ -233,7 +265,7 @@ class AuditLog(models.Model):
         ('join_approved', 'Join Approved'),
         ('join_declined', 'Join Declined'),
         ('user_banned', 'User Banned'),
-        ('leader_selected', 'Leader Selected'),
+        ('group_left', 'Group Left'),
     ]
 
     id = models.BigAutoField(primary_key=True)

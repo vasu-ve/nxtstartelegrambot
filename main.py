@@ -4,7 +4,7 @@ import logging
 
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ChatMemberHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 load_dotenv()
 
@@ -150,34 +150,34 @@ async def check_payment_status(uid):
         }
 
 
-async def get_available_leaders(language):
-    """Get available leaders from Django backend."""
+async def get_available_groups(language):
+    """Get available groups for a language from Django backend."""
     try:
         response = await client.get(
-            f"{DJANGO_API_BASE_URL}/leaders/available/",
+            f"{DJANGO_API_BASE_URL}/groups/available/",
+            params={"language": language},
         )
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        logger.error(f"Error getting leaders: {e}")
+        logger.error(f"Error getting groups: {e}")
         return None
 
 
-async def select_leader_and_generate_link(user_id, leader_id, language):
-    """Select a leader and generate invite link."""
+async def select_group_and_generate_link(user_id, group_id):
+    """Select a group and generate invite link."""
     try:
         response = await client.post(
-            f"{DJANGO_API_BASE_URL}/leaders/select-and-generate/",
+            f"{DJANGO_API_BASE_URL}/groups/select-and-generate/",
             json={
                 "user_id": user_id,
-                "leader_id": leader_id,
-                "language": language,
+                "group_id": group_id,
             },
         )
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        logger.error(f"Error selecting leader and generating link: {e}")
+        logger.error(f"Error selecting group and generating link: {e}")
         return None
 
 
@@ -344,6 +344,9 @@ async def handle_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
 async def reply_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle text messages from users."""
+    if not update.message or not update.message.text:
+        return
+
     text = update.message.text.lower().strip()
     user_data = context.user_data
 
@@ -472,22 +475,22 @@ async def handle_uid_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     
     # Step 5: Deposit Check
     if has_deposit:
-        # Deposit confirmed - proceed to leader selection
+        # Deposit confirmed - proceed to group selection
         logger.info(f"[UID_INPUT] ✅ Deposit confirmed (status: {deposit_status_str})")
-        
+
         confirm_messages = {
-            "pt-br": f"✅ Depósito confirmado!\n\n👤 Username: {nextstar_username}\n🏦 Corretora: {broker_name}\n\nProsseguindo para seleção de líderes...",
-            "fr": f"✅ Dépôt confirmé!\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n\nPassage à la sélection des leaders...",
-            "en": f"✅ Deposit confirmed!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n\nProceeding to leader selection...",
-            "es": f"✅ ¡Depósito confirmado!\n\n👤 Usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n\nProcediendo a la selección de líderes...",
-            "ar": f"✅ تم تأكيد الإيداع!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n\nجاري الانتقال لاختيار القائد...",
+            "pt-br": f"✅ Depósito confirmado!\n\n👤 Username: {nextstar_username}\n🏦 Corretora: {broker_name}\n\nProsseguindo para seleção de grupo...",
+            "fr": f"✅ Dépôt confirmé!\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n\nPassage à la sélection du groupe...",
+            "en": f"✅ Deposit confirmed!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n\nProceeding to group selection...",
+            "es": f"✅ ¡Depósito confirmado!\n\n👤 Usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n\nProcediendo a la selección de grupo...",
+            "ar": f"✅ تم تأكيد الإيداع!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n\nجاري الانتقال لاختيار المجموعة...",
         }
-        
+
         confirm_text = confirm_messages.get(language, f"Deposit confirmed! Broker: {broker_name}")
         await update.message.reply_text(confirm_text)
-        
-        # Proceed to leader selection
-        await proceed_to_leader_selection(update, context, user_id, uid)
+
+        # Proceed to group selection
+        await proceed_to_group_selection(update, context, user_id, uid)
         user_data.pop('awaiting_uid', None)
     
     else:
@@ -520,88 +523,80 @@ async def handle_uid_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         user_data.pop('awaiting_uid', None)
 
 
-async def proceed_to_leader_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, uid: str) -> None:
-    """Fetch available leaders and show selection buttons.
-    
-    Step 6: Leader selection with language check
-    """
+async def proceed_to_group_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, uid: str) -> None:
+    """Fetch available groups for the user's language and show selection buttons."""
     user_data = context.user_data
     language = user_data.get('language', 'en')
-    
-    # Fetch available leaders for this language
-    leaders_result = await get_available_leaders(language)
-    
-    if not leaders_result or not leaders_result.get('success'):
+
+    groups_result = await get_available_groups(language)
+
+    if not groups_result or not groups_result.get('success'):
         error_messages = {
-            "pt-br": "❌ Não há líderes disponíveis no momento. Tente mais tarde.",
-            "fr": "❌ Aucun leader disponible pour le moment. Réessayez plus tard.",
-            "en": "❌ No leaders available at the moment. Please try later.",
-            "es": "❌ No hay líderes disponibles en este momento. Intenta más tarde.",
-            "ar": "❌ لا يوجد قادة متاحون في الوقت الحالي. حاول لاحقاً.",
+            "pt-br": "❌ Não há grupos disponíveis no momento. Tente mais tarde.",
+            "fr": "❌ Aucun groupe disponible pour le moment. Réessayez plus tard.",
+            "en": "❌ No groups available at the moment. Please try later.",
+            "es": "❌ No hay grupos disponibles en este momento. Intenta más tarde.",
+            "ar": "❌ لا توجد مجموعات متاحة في الوقت الحالي. حاول لاحقاً.",
         }
-        error_msg = error_messages.get(language, "No leaders available.")
+        error_msg = error_messages.get(language, "No groups available.")
         if update and update.message:
             await update.message.reply_text(error_msg)
         else:
             await context.bot.send_message(chat_id=user_data.get('chat_id'), text=error_msg)
-        
-        # ✅ Keep user_id, language, original_uid intact for retry
+
         user_data.pop('temp_uid', None)
         user_data.pop('joining_another_group', None)
         return
-    
-    leaders = leaders_result.get('leaders', [])
-    
-    if not leaders:
+
+    groups = groups_result.get('groups', [])
+
+    if not groups:
         error_messages = {
-            "pt-br": "❌ Nenhum líder disponível. Tente mais tarde.",
-            "fr": "❌ Aucun leader disponible. Réessayez plus tard.",
-            "en": "❌ No leaders available. Please try later.",
-            "es": "❌ Sin líderes disponibles. Intenta más tarde.",
-            "ar": "❌ لا يوجد قادة متاحون. حاول لاحقاً.",
+            "pt-br": "❌ Nenhum grupo disponível. Tente mais tarde.",
+            "fr": "❌ Aucun groupe disponible. Réessayez plus tard.",
+            "en": "❌ No groups available. Please try later.",
+            "es": "❌ Sin grupos disponibles. Intenta más tarde.",
+            "ar": "❌ لا توجد مجموعات متاحة. حاول لاحقاً.",
         }
-        error_msg = error_messages.get(language, "No leaders available.")
+        error_msg = error_messages.get(language, "No groups available.")
         if update and update.message:
             await update.message.reply_text(error_msg)
         else:
             await context.bot.send_message(chat_id=user_data.get('chat_id'), text=error_msg)
-        
-        # ✅ Keep user_id, language, original_uid intact for retry
+
         user_data.pop('temp_uid', None)
         user_data.pop('joining_another_group', None)
         return
-    
-    logger.info(f"[LEADER_SELECTION] Found {len(leaders)} leaders for language {language}")
-    
-    # Store leaders and UID in user_data for callback handling
-    user_data['available_leaders'] = leaders
-    user_data['awaiting_leader_selection'] = True
+
+    logger.info(f"[GROUP_SELECTION] Found {len(groups)} groups for language {language}")
+
+    user_data['available_groups'] = groups
+    user_data['awaiting_group_selection'] = True
     user_data['verified_uid'] = uid
-    
-    # Create leader selection buttons (2 per row)
+
     keyboard = []
-    for i, leader in enumerate(leaders):
+    for i, group in enumerate(groups):
         if i % 2 == 0:
             keyboard.append([])
         keyboard[-1].append(
             InlineKeyboardButton(
-                f"👤 {leader['display_name']}",
-                callback_data=f"select_leader_{leader['id']}"
+                f"🏘️ {group['chat_title']}",
+                callback_data=f"select_group_{group['id']}"
             )
         )
-    
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     selection_prompts = {
-        "pt-br": "🎯 Excelente! Agora escolha um líder para se juntar ao grupo:\n\nSelecione um dos líderes abaixo:",
-        "fr": "🎯 Excellent! Choisissez maintenant un leader pour rejoindre le groupe:\n\nSélectionnez l'un des leaders ci-dessous:",
-        "en": "🎯 Great! Now select a leader to join their group:\n\nChoose one of the leaders below:",
-        "es": "🎯 ¡Excelente! Ahora elige un líder para unirte a su grupo:\n\nSelecciona uno de los líderes a continuación:",
-        "ar": "🎯 ممتاز! اختر الآن قائداً للانضمام إلى مجموعته:\n\nاختر أحد القادة أدناه:",
+        "pt-br": "🎯 Excelente! Agora escolha um grupo para entrar:\n\nSelecione um dos grupos abaixo:",
+        "fr": "🎯 Excellent! Choisissez maintenant un groupe à rejoindre:\n\nSélectionnez l'un des groupes ci-dessous:",
+        "en": "🎯 Great! Now select a group to join:\n\nChoose one of the groups below:",
+        "es": "🎯 ¡Excelente! Ahora elige un grupo para unirte:\n\nSelecciona uno de los grupos a continuación:",
+        "ar": "🎯 ممتاز! اختر الآن مجموعة للانضمام إليها:\n\nاختر إحدى المجموعات أدناه:",
     }
-    
-    selection_msg = selection_prompts.get(language, "Choose a leader:")
-    
+
+    selection_msg = selection_prompts.get(language, "Choose a group:")
+
     if update and update.message:
         await update.message.reply_text(selection_msg, reply_markup=reply_markup)
     else:
@@ -612,111 +607,72 @@ async def proceed_to_leader_selection(update: Update, context: ContextTypes.DEFA
         )
 
 
-async def handle_leader_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, leader_id: int) -> None:
-    """Handle leader selection callback.
-    
-    Step 6: Check if leader has a group in user's language
-    Step 7: Generate personal invite link
-    """
+async def handle_group_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, group_id: int) -> None:
+    """Handle group selection callback — generate personal invite link for the chosen group."""
     query = update.callback_query
     await query.answer()
-    
+
     user_data = context.user_data
     language = user_data.get('language', 'en')
     user_id = user_data.get('user_id')
-    uid = user_data.get('verified_uid')
-    
-    logger.info(f"[LEADER_CALLBACK] leader_id={leader_id}, user_id={user_id}, language={language}")
-    
-    # Find selected leader
-    leaders = user_data.get('available_leaders', [])
-    selected_leader = None
-    for leader in leaders:
-        if leader['id'] == leader_id:
-            selected_leader = leader
+
+    logger.info(f"[GROUP_CALLBACK] group_id={group_id}, user_id={user_id}, language={language}")
+
+    # Find selected group
+    groups = user_data.get('available_groups', [])
+    selected_group = None
+    for group in groups:
+        if group['id'] == group_id:
+            selected_group = group
             break
-    
-    if not selected_leader:
+
+    if not selected_group:
         error_messages = {
-            "pt-br": "❌ Líder não encontrado. Tente novamente.",
-            "fr": "❌ Leader non trouvé. Réessayez.",
-            "en": "❌ Leader not found. Please try again.",
-            "es": "❌ Líder no encontrado. Intenta de nuevo.",
-            "ar": "❌ لم يتم العثور على القائد. حاول مرة أخرى.",
+            "pt-br": "❌ Grupo não encontrado. Tente novamente.",
+            "fr": "❌ Groupe non trouvé. Réessayez.",
+            "en": "❌ Group not found. Please try again.",
+            "es": "❌ Grupo no encontrado. Intenta de nuevo.",
+            "ar": "❌ لم يتم العثور على المجموعة. حاول مرة أخرى.",
         }
-        error_msg = error_messages.get(language, "Leader not found.")
-        logger.warning(f"[LEADER_CALLBACK] Leader {leader_id} not found in available leaders")
+        error_msg = error_messages.get(language, "Group not found.")
+        logger.warning(f"[GROUP_CALLBACK] Group {group_id} not found in available groups")
         await query.edit_message_text(text=error_msg)
-        
-        # Clean up
-        user_data.pop('available_leaders', None)
-        user_data.pop('awaiting_leader_selection', None)
+
+        user_data.pop('available_groups', None)
+        user_data.pop('awaiting_group_selection', None)
         return
-    
-    logger.info(f"[LEADER_CALLBACK] Selected leader: {selected_leader['display_name']}")
-    
-    # Check if leader has a group in user's language
-    has_group = selected_leader.get('has_group', True)
-    
-    if not has_group:
-        logger.warning(f"[LEADER_CALLBACK] Leader {selected_leader['display_name']} has no group in language {language}")
-        
-        # Offer options: /start or pick different language
-        no_group_messages = {
-            "pt-br": f"❌ O líder '{selected_leader['display_name']}' não tem um grupo em Português (Brasil).\n\n⚠️ Opções:\n1. Escolher um idioma diferente\n2. Escolher outro líder",
-            "fr": f"❌ Le leader '{selected_leader['display_name']}' n'a pas de groupe en Français.\n\n⚠️ Options:\n1. Choisir une langue différente\n2. Choisir un autre leader",
-            "en": f"❌ Leader '{selected_leader['display_name']}' doesn't have a group in English.\n\n⚠️ Options:\n1. Choose a different language\n2. Choose another leader",
-            "es": f"❌ El líder '{selected_leader['display_name']}' no tiene un grupo en Español.\n\n⚠️ Opciones:\n1. Elegir un idioma diferente\n2. Elegir otro líder",
-            "ar": f"❌ القائد '{selected_leader['display_name']}' لا يملك مجموعة باللغة العربية.\n\n⚠️ الخيارات:\n1. اختيار لغة مختلفة\n2. اختيار قائد آخر",
-        }
-        
-        no_group_msg = no_group_messages.get(language, f"Leader doesn't have a group in your language.")
-        
-        # Show restart button and back to leader selection
-        keyboard = [[
-            InlineKeyboardButton("🔙 Back to Leaders", callback_data="back_to_leaders"),
-            InlineKeyboardButton("🌐 Change Language", callback_data="change_language")
-        ]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(text=no_group_msg, reply_markup=reply_markup)
-        
-        # Clean up
-        user_data.pop('available_leaders', None)
-        user_data.pop('awaiting_leader_selection', None)
-        return
-    
-    # Step 7: Generate invite link for selected leader
-    logger.info(f"[LEADER_CALLBACK] Calling select_leader_and_generate_link API for leader {leader_id}")
-    invite_result = await select_leader_and_generate_link(user_id, leader_id, language)
-    
+
+    logger.info(f"[GROUP_CALLBACK] Selected group: {selected_group['chat_title']}")
+
+    # Generate invite link for selected group
+    logger.info(f"[GROUP_CALLBACK] Calling select_group_and_generate_link API for group {group_id}")
+    invite_result = await select_group_and_generate_link(user_id, group_id)
+
     if not invite_result or not invite_result.get('success'):
         error_reason = invite_result.get('reason', 'Unknown error') if invite_result else 'Backend error'
         error_message_key = invite_result.get('message', '') if invite_result else ''
 
-        # ✅ Special handling for already joined this specific group
         if error_message_key == 'already_joined_this_group':
             already_joined_messages = {
-                "pt-br": "⚠️ Você já é membro deste grupo!\n\nEscolha um líder diferente ou clique em '➕ Entrar em outro grupo' para escolher outro idioma.",
-                "fr": "⚠️ Vous êtes déjà membre de ce groupe!\n\nChoisissez un autre leader ou cliquez sur '➕ Rejoindre un autre groupe' pour choisir une autre langue.",
-                "en": "⚠️ You are already a member of this group!\n\nChoose a different leader or click '➕ Join Another Group' to pick a different language.",
-                "es": "⚠️ ¡Ya eres miembro de este grupo!\n\nElige un líder diferente o haz clic en '➕ Unirse a otro grupo' para elegir otro idioma.",
-                "ar": "⚠️ أنت بالفعل عضو في هذه المجموعة!\n\nاختر قائداً مختلفاً أو انقر على '➕ الانضمام إلى مجموعة أخرى' لاختيار لغة مختلفة.",
+                "pt-br": "⚠️ Você já é membro deste grupo!\n\nEscolha outro grupo ou clique em '➕ Entrar em outro grupo' para escolher outro idioma.",
+                "fr": "⚠️ Vous êtes déjà membre de ce groupe!\n\nChoisissez un autre groupe ou cliquez sur '➕ Rejoindre un autre groupe' pour choisir une autre langue.",
+                "en": "⚠️ You are already a member of this group!\n\nChoose a different group or click '➕ Join Another Group' to pick a different language.",
+                "es": "⚠️ ¡Ya eres miembro de este grupo!\n\nElige otro grupo o haz clic en '➕ Unirse a otro grupo' para elegir otro idioma.",
+                "ar": "⚠️ أنت بالفعل عضو في هذه المجموعة!\n\nاختر مجموعة أخرى أو انقر على '➕ الانضمام إلى مجموعة أخرى' لاختيار لغة مختلفة.",
             }
             error_msg = already_joined_messages.get(language, "You are already a member of this group.")
-            
+
             keyboard = [[
-                InlineKeyboardButton("🔙 Back to Leaders", callback_data="back_to_leaders"),
+                InlineKeyboardButton("🔙 Back to Groups", callback_data="back_to_groups"),
                 InlineKeyboardButton("➕ Join Another Group", callback_data="join_another_group"),
             ]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             await query.edit_message_text(text=error_msg, reply_markup=reply_markup)
-            user_data.pop('available_leaders', None)
-            user_data.pop('awaiting_leader_selection', None)
+            user_data.pop('available_groups', None)
+            user_data.pop('awaiting_group_selection', None)
             return
 
-        # Generic error fallback
         error_messages = {
             "pt-br": f"❌ Erro ao gerar link: {error_reason}",
             "fr": f"❌ Erreur lors de la génération du lien: {error_reason}",
@@ -725,40 +681,36 @@ async def handle_leader_callback(update: Update, context: ContextTypes.DEFAULT_T
             "ar": f"❌ خطأ في إنشاء الرابط: {error_reason}",
         }
         error_msg = error_messages.get(language, f"Error: {error_reason}")
-        logger.error(f"[LEADER_CALLBACK] Failed to generate link: {error_reason}")
+        logger.error(f"[GROUP_CALLBACK] Failed to generate link: {error_reason}")
         await query.edit_message_text(text=error_msg)
-        user_data.pop('available_leaders', None)
-        user_data.pop('awaiting_leader_selection', None)
+        user_data.pop('available_groups', None)
+        user_data.pop('awaiting_group_selection', None)
         return
-    
-    # Step 7: Show confirmation and invite link (valid for 15 minutes)
+
     invite_link = invite_result.get('invite_link')
-    logger.info(f"[LEADER_CALLBACK] ✅ Invite link generated: {invite_link}")
-    
+    logger.info(f"[GROUP_CALLBACK] ✅ Invite link generated: {invite_link}")
+
     confirmation_messages = {
-        "pt-br": f"✅ Você selecionou: {selected_leader['display_name']}\n\n🔗 Seu link de convite pessoal (válido por 15 minutos):\n\n{invite_link}\n\n👆 Clique no link acima para entrar no grupo automaticamente!",
-        "fr": f"✅ Vous avez sélectionné: {selected_leader['display_name']}\n\n🔗 Votre lien d'invitation personnel (valable 15 minutes):\n\n{invite_link}\n\n👆 Cliquez sur le lien ci-dessus pour rejoindre le groupe automatiquement!",
-        "en": f"✅ You selected: {selected_leader['display_name']}\n\n🔗 Your personal invite link (valid for 15 minutes):\n\n{invite_link}\n\n👆 Click the link above to join the group automatically!",
-        "es": f"✅ Seleccionaste: {selected_leader['display_name']}\n\n🔗 Tu enlace de invitación personal (válido por 15 minutos):\n\n{invite_link}\n\n👆 ¡Haz clic en el enlace anterior para unirte automáticamente al grupo!",
-        "ar": f"✅ اخترت: {selected_leader['display_name']}\n\n🔗 رابط الدعوة الشخصي (صالح لمدة 15 دقيقة):\n\n{invite_link}\n\n👆 انقر على الرابط أعلاه للانضمام إلى المجموعة تلقائياً!",
+        "pt-br": f"✅ Você selecionou: {selected_group['chat_title']}\n\n🔗 Seu link de convite pessoal (válido por 15 minutos):\n\n{invite_link}\n\n👆 Clique no link acima para entrar no grupo automaticamente!",
+        "fr": f"✅ Vous avez sélectionné: {selected_group['chat_title']}\n\n🔗 Votre lien d'invitation personnel (valable 15 minutes):\n\n{invite_link}\n\n👆 Cliquez sur le lien ci-dessus pour rejoindre le groupe automatiquement!",
+        "en": f"✅ You selected: {selected_group['chat_title']}\n\n🔗 Your personal invite link (valid for 15 minutes):\n\n{invite_link}\n\n👆 Click the link above to join the group automatically!",
+        "es": f"✅ Seleccionaste: {selected_group['chat_title']}\n\n🔗 Tu enlace de invitación personal (válido por 15 minutos):\n\n{invite_link}\n\n👆 ¡Haz clic en el enlace anterior para unirte automáticamente al grupo!",
+        "ar": f"✅ اخترت: {selected_group['chat_title']}\n\n🔗 رابط الدعوة الشخصي (صالح لمدة 15 دقيقة):\n\n{invite_link}\n\n👆 انقر على الرابط أعلاه للانضمام إلى المجموعة تلقائياً!",
     }
-    
-    confirmation_msg = confirmation_messages.get(language, f"Selected leader: {selected_leader['display_name']}\n\nInvite link: {invite_link}")
-    
-    # Add buttons for joining another group or exiting
+
+    confirmation_msg = confirmation_messages.get(language, f"Selected group: {selected_group['chat_title']}\n\nInvite link: {invite_link}")
+
     keyboard = [[
         InlineKeyboardButton("➕ Join Another Group", callback_data="join_another_group"),
         InlineKeyboardButton("✅ Done", callback_data="exit_chat")
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await query.edit_message_text(text=confirmation_msg, reply_markup=reply_markup)
-    
-    # Clean up group selection data but keep user info for next iteration
-    user_data.pop('available_leaders', None)
-    user_data.pop('awaiting_leader_selection', None)
+
+    user_data.pop('available_groups', None)
+    user_data.pop('awaiting_group_selection', None)
     user_data.pop('verified_uid', None)
-    # Keep language and user_id for continuity, will be reset if user starts over
 
 
 
@@ -775,8 +727,8 @@ async def handle_join_another_group(update: Update, context: ContextTypes.DEFAUL
     
     # Reset only group-selection state, keep user_id, language, original_uid
     user_data.pop('verified_uid', None)
-    user_data.pop('available_leaders', None)
-    user_data.pop('awaiting_leader_selection', None)
+    user_data.pop('available_groups', None)
+    user_data.pop('awaiting_group_selection', None)
     
     await query.edit_message_text(
         text="🌐 Which language group do you want to join next?",
@@ -848,10 +800,10 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     elif callback_data == 'exit_chat':
         await handle_exit_chat(update, context)
     
-    # Handle back to leader selection
-    elif callback_data == 'back_to_leaders':
+    # Handle back to group selection
+    elif callback_data == 'back_to_groups':
         user_data['chat_id'] = update.effective_chat.id  # ✅ ensure chat_id is set
-        await proceed_to_leader_selection(None, context, user_data.get('user_id'), user_data.get('verified_uid'))
+        await proceed_to_group_selection(None, context, user_data.get('user_id'), user_data.get('verified_uid'))
     
     # Handle change language
     elif callback_data == 'change_language':
@@ -868,10 +820,10 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=reply_markup,
         )
     
-    # Handle leader selection
-    elif callback_data.startswith('select_leader_'):
-        leader_id = int(callback_data.replace('select_leader_', ''))
-        await handle_leader_callback(update, context, leader_id)
+    # Handle group selection
+    elif callback_data.startswith('select_group_'):
+        group_id = int(callback_data.replace('select_group_', ''))
+        await handle_group_callback(update, context, group_id)
 
 
 async def handle_deposit_recheck(update: Update, context: ContextTypes.DEFAULT_TYPE, uid: str) -> None:
@@ -924,30 +876,31 @@ async def handle_deposit_recheck(update: Update, context: ContextTypes.DEFAULT_T
     nextstar_username = payment_result.get('nextstar_username', '')
     
     if has_deposit:
-        # Deposit confirmed - proceed to leader selection
+        # Deposit confirmed - proceed to group selection
         logger.info(f"[DEPOSIT_RECHECK] ✅ Deposit confirmed (status: {deposit_status_str})")
-        
+
         # Save UID to database if not already saved
         logger.info(f"[DEPOSIT_RECHECK] Saving nxtstar_uid to database for user {user_id}")
         verify_result = await verify_user(user_id, uid)
-        
+
         if verify_result and verify_result.get('success'):
             logger.info(f"[DEPOSIT_RECHECK] ✅ UID saved to database successfully")
         else:
             error_msg = verify_result.get('message', 'Unknown error') if verify_result else 'Failed to save UID'
             logger.warning(f"[DEPOSIT_RECHECK] ⚠️ Failed to save UID to database: {error_msg}")
-        
+
         success_messages = {
-            "pt-br": f"✅ Depósito confirmado!\n\n👤 Username: {nextstar_username}\n🏦 Corretora: {broker_name}\n\nProsseguindo para seleção de líderes...",
-            "fr": f"✅ Dépôt confirmé!\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n\nPassage à la sélection des leaders...",
-            "en": f"✅ Deposit confirmed!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n\nProceeding to leader selection...",
-            "es": f"✅ ¡Depósito confirmado!\n\n👤 Usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n\nProcediendo a la selección de líderes...",
-            "ar": f"✅ تم تأكيد الإيداع!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n\nجاري الانتقال لاختيار القائد...",
+            "pt-br": f"✅ Depósito confirmado!\n\n👤 Username: {nextstar_username}\n🏦 Corretora: {broker_name}\n\nProsseguindo para seleção de grupo...",
+            "fr": f"✅ Dépôt confirmé!\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n\nPassage à la sélection du groupe...",
+            "en": f"✅ Deposit confirmed!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n\nProceeding to group selection...",
+            "es": f"✅ ¡Depósito confirmado!\n\n👤 Usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n\nProcediendo a la selección de grupo...",
+            "ar": f"✅ تم تأكيد الإيداع!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n\nجاري الانتقال لاختيار المجموعة...",
         }
         success_msg = success_messages.get(language, "Deposit confirmed!")
         await query.edit_message_text(text=success_msg)
-        
-        await proceed_to_leader_selection(None, context, user_id, uid)
+
+        user_data['chat_id'] = update.effective_chat.id
+        await proceed_to_group_selection(None, context, user_id, uid)
         user_data.pop('awaiting_redeposit_check', None)
     
     else:
@@ -964,6 +917,45 @@ async def handle_deposit_recheck(update: Update, context: ContextTypes.DEFAULT_T
         still_no_deposit_msg = still_no_deposit_messages.get(language, "Still no deposit detected.")
         await query.edit_message_text(text=still_no_deposit_msg)
 
+async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle chat_member updates — fires reliably in both basic groups AND supergroups.
+
+    Detects transitions from an "in-group" status (member/administrator/restricted/creator)
+    to an "out-of-group" status (left/kicked) and removes the group from the user's
+    joined_groups in the database.
+    """
+    chat_member_update = update.chat_member
+    if not chat_member_update:
+        return
+
+    old_status = chat_member_update.old_chat_member.status
+    new_status = chat_member_update.new_chat_member.status
+
+    in_group = {"member", "administrator", "restricted", "creator"}
+    out_of_group = {"left", "kicked"}
+
+    if old_status not in in_group or new_status not in out_of_group:
+        return
+
+    member = chat_member_update.new_chat_member.user
+    telegram_id = member.id
+    chat_id = update.effective_chat.id
+
+    logger.info(
+        f"[LEFT_GROUP] User {telegram_id} transitioned {old_status} -> {new_status} in chat {chat_id}"
+    )
+
+    try:
+        response = await client.post(
+            f"{DJANGO_API_BASE_URL}/groups/user-left/",
+            json={
+                "telegram_user_id": telegram_id,
+                "chat_id": chat_id,
+            },
+        )
+        logger.info(f"[LEFT_GROUP] API response: {response.json()}")
+    except Exception as e:
+        logger.error(f"[LEFT_GROUP] Error: {e}")
 
 async def handle_language_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, language: str) -> None:
     """Handle language selection from buttons."""
@@ -984,17 +976,17 @@ async def handle_language_selection(update: Update, context: ContextTypes.DEFAUL
             "ar": "✅ ممتاز! البحث عن مجموعات باللغة العربية...",
         }
 
-        thanks_message = thanks_responses.get(language, "Loading leaders...")
+        thanks_message = thanks_responses.get(language, "Loading groups...")
         await query.edit_message_text(text=thanks_message)
         
         uid = user_data.get('original_uid')
         user_id = user_data.get('user_id')
         
         if uid and user_id:
-            logger.info(f"[LANGUAGE_SELECT] Proceeding to leader selection for user {user_id} with UID {uid}")
-            # ✅ Set chat_id so proceed_to_leader_selection can send messages via send_message
+            logger.info(f"[LANGUAGE_SELECT] Proceeding to group selection for user {user_id} with UID {uid}")
+            # ✅ Set chat_id so proceed_to_group_selection can send messages via send_message
             user_data['chat_id'] = update.effective_chat.id
-            await proceed_to_leader_selection(None, context, user_id, uid)
+            await proceed_to_group_selection(None, context, user_id, uid)
         else:
             error_msg = "❌ Error: Could not retrieve UID. Please start over with /start"
             await query.edit_message_text(text=error_msg)
@@ -1066,11 +1058,16 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handle_callback_query))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_members))
     app.add_handler(CommandHandler("debug", debug_chat))
+    # ChatMemberHandler fires for both basic groups AND supergroups (left_chat_member
+    # service messages are NOT delivered for supergroup leaves).
+    app.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
     print("🤖 NxtStar Bot is starting...")
     print(f"📡 Django API: {DJANGO_API_BASE_URL}")
     print(f"💳 Payment API: {NXTSTAR_API_URL}")
     print("Press Ctrl+C to stop.")
-    app.run_polling()
+    # chat_member updates must be explicitly requested in allowed_updates,
+    # otherwise Telegram will not deliver them.
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":

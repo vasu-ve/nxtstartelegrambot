@@ -137,7 +137,6 @@ def generate_invite_link(request):
         groups = Group.objects.filter(
             language=language,
             is_active=True,
-            leader__is_active=True
         )
 
         if not groups.exists():
@@ -332,14 +331,8 @@ def select_leader_and_generate_link(request):
                 'reason': 'Group not configured for this leader/language',
             })
 
-        # ✅ Check if user already joined THIS specific group (allow joining other groups)
-        already_joined_this_group = InviteLink.objects.filter(
-            user=user,
-            group=group,
-            status='used'
-        ).exists()
-
-        if already_joined_this_group:
+        # ✅ Source of truth is joined_groups M2M (kept in sync on join/leave)
+        if user.has_joined_group(group):
             AuditLog.objects.create(
                 user=user,
                 event_type='leader_selected',
@@ -382,6 +375,114 @@ def select_leader_and_generate_link(request):
         print(traceback.format_exc())
         return JsonResponse({'error': str(e)}, status=500)
     
+@csrf_exempt
+@require_http_methods(["GET"])
+def get_available_groups(request):
+    """Get all active groups for a given language."""
+    try:
+        language = request.GET.get('language', 'en')
+
+        groups = list(
+            Group.objects.filter(language=language, is_active=True).values(
+                'id', 'chat_id', 'chat_title', 'language'
+            )
+        )
+
+        if not groups:
+            return JsonResponse({
+                'success': False,
+                'message': 'no_groups_available',
+                'reason': 'No groups available for this language',
+            })
+
+        return JsonResponse({
+            'success': True,
+            'message': 'groups_fetched',
+            'groups': groups,
+            'count': len(groups),
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def select_group_and_generate_link(request):
+    """Select a group and generate an invite link for a user."""
+    try:
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+        group_id = data.get('group_id')
+
+        if not user_id or not group_id:
+            return JsonResponse({'error': 'user_id and group_id are required'}, status=400)
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return JsonResponse({'error': 'User not found'}, status=404)
+
+        try:
+            group = Group.objects.get(id=group_id, is_active=True)
+        except Group.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'group_not_found',
+                'reason': 'Selected group is not available',
+            })
+
+        if user.is_banned:
+            AuditLog.objects.create(
+                user=user,
+                event_type='invite_created',
+                description="Group selection attempted but user is banned"
+            )
+            return JsonResponse({
+                'success': False,
+                'message': 'user_banned',
+                'reason': 'Your account is banned',
+            })
+
+        # Source of truth is the joined_groups M2M, which is kept in sync
+        # by mark_invite_used/validate_join (on join) and user_left_group (on leave).
+        if user.has_joined_group(group):
+            AuditLog.objects.create(
+                user=user,
+                event_type='invite_created',
+                description=f"User already joined group {group.chat_title}"
+            )
+            return JsonResponse({
+                'success': False,
+                'message': 'already_joined_this_group',
+                'reason': 'You have already joined this group',
+            })
+
+        with transaction.atomic():
+            invite_link = InviteLink.create_invite(user, group)
+
+        AuditLog.objects.create(
+            user=user,
+            event_type='invite_created',
+            description=f"Invite created for group {group.chat_title}",
+            metadata={'group_id': group.id, 'invite_id': str(invite_link.id)}
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': 'invite_generated',
+            'group_id': group.id,
+            'group_title': group.chat_title,
+            'invite_link': invite_link.invite_link,
+            'invite_id': str(invite_link.id),
+            'expires_in_minutes': 15,
+        })
+    except Exception as e:
+        import traceback
+        print("ERROR:::::::::::::::::::::::::::::::::", str(e))
+        print(traceback.format_exc())
+        return JsonResponse({'error': str(e)}, status=500)
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def validate_join(request):
@@ -535,3 +636,80 @@ def debug_invites(request):
     except Exception as e:
         logger.error(f"[DEBUG_INVITES] Error: {str(e)}", exc_info=True)
         return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def user_left_group(request):
+    """Handle user leaving group."""
+    try:
+        data = json.loads(request.body)
+
+        telegram_user_id = data.get("telegram_user_id")
+        chat_id = data.get("chat_id")
+
+        if not telegram_user_id or not chat_id:
+            return JsonResponse({
+                "success": False,
+                "reason": "missing_data"
+            })
+
+        user = User.objects.filter(
+            telegram_user_id=telegram_user_id
+        ).first()
+
+        if not user:
+            return JsonResponse({
+                "success": False,
+                "reason": "user_not_found"
+            })
+
+        group = Group.objects.filter(
+            chat_id=chat_id
+        ).first()
+
+        if not group:
+            return JsonResponse({
+                "success": False,
+                "reason": "group_not_found"
+            })
+
+        # Remove from joined groups
+        user.joined_groups.remove(group)
+
+        # Revoke every usable invite link this user has for this group, so they
+        # cannot rejoin via the old URL — they must regenerate through the bot.
+        revoked_ids = []
+        usable_invites = InviteLink.objects.filter(
+            user=user,
+            group=group,
+            status__in=['used', 'pending'],
+        )
+        for invite in usable_invites:
+            invite.revoke()
+            revoked_ids.append(str(invite.id))
+
+        # Audit log
+        AuditLog.objects.create(
+            user=user,
+            event_type='group_left',
+            description=f"User left group {group.chat_title}",
+            metadata={
+                "group_id": group.id,
+                "chat_id": group.chat_id,
+                "group_title": group.chat_title,
+                "revoked_invite_ids": revoked_ids,
+            }
+        )
+
+        return JsonResponse({
+            "success": True,
+            "message": "group_removed",
+            "revoked_invites": len(revoked_ids),
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            "success": False,
+            "error": str(e)
+        }, status=500)

@@ -27,13 +27,13 @@ class LeaderAdmin(admin.ModelAdmin):
 
 @admin.register(Group)
 class GroupAdmin(admin.ModelAdmin):
-    list_display = ('chat_title', 'leader', 'language', 'is_active', 'created_at')
-    list_filter = ('leader', 'language', 'is_active', 'created_at')
+    list_display = ('chat_title', 'language', 'is_active', 'created_at')
+    list_filter = ('language', 'is_active', 'created_at')
     search_fields = ('chat_title', 'chat_id')
     readonly_fields = ('created_at', 'updated_at')
     fieldsets = (
         ('Group Information', {
-            'fields': ('leader', 'chat_title', 'chat_id', 'language')
+            'fields': ('chat_title', 'chat_id', 'language')
         }),
         ('Status', {
             'fields': ('is_active',)
