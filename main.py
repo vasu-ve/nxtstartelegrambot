@@ -197,12 +197,54 @@ def validate_uid_format(uid):
     return True, None
 
 
+LANGUAGE_KEYBOARD = [
+    [InlineKeyboardButton("🇧🇷 Portuguese (Brazil)", callback_data="lang_pt-br")],
+    [InlineKeyboardButton("🇫🇷 French", callback_data="lang_fr")],
+    [InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
+    [InlineKeyboardButton("🇪🇸 Spanish", callback_data="lang_es")],
+    [InlineKeyboardButton("🇸🇦 Arabic", callback_data="lang_ar")],
+]
+
+
+async def reset_user_in_backend(telegram_user_id):
+    """Best-effort call to wipe the user's stored UID / joined groups in the backend.
+
+    Safe to call even if the backend has no such endpoint — failures are logged and ignored.
+    """
+    try:
+        response = await client.post(
+            f"{DJANGO_API_BASE_URL}/users/reset/",
+            json={"telegram_user_id": telegram_user_id},
+        )
+        if response.status_code == 200:
+            logger.info(f"[RESET] Backend reset OK for telegram_user_id={telegram_user_id}")
+        else:
+            logger.warning(f"[RESET] Backend reset returned HTTP {response.status_code}")
+    except Exception as e:
+        logger.warning(f"[RESET] Backend reset call failed (endpoint may not exist yet): {e}")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Start command - greet user and ask for language."""
+    """Start command - wipe all prior state (in-memory + backend) and show language picker.
+
+    This is the user's escape hatch: any stale UID, awaiting_* flags, or saved groups
+    must be cleared so the user is treated as brand new and re-prompted from scratch.
+    """
+    telegram_user_id = update.effective_user.id
+    logger.info(f"[START] /start from telegram_user_id={telegram_user_id} — resetting state")
+
+    # 1. Wipe in-memory session state (UID, awaiting_uid, awaiting_redeposit_check, language, etc.)
+    context.user_data.clear()
+
+    # 2. Best-effort wipe of the user's backend record so the next UID entry is treated fresh
+    await reset_user_in_backend(telegram_user_id)
+
+    # 3. Show language picker (same flow as Hi/Hello)
     await update.message.reply_text(
         "🎉 Welcome to NxtStar Bot!\n\n"
         "I'm your trading bot companion. Let me help you get started.\n\n"
-        "First, please choose your preferred language:"
+        "First, please choose your preferred language:",
+        reply_markup=InlineKeyboardMarkup(LANGUAGE_KEYBOARD),
     )
 
 async def handle_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -350,33 +392,32 @@ async def reply_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     text = update.message.text.lower().strip()
     user_data = context.user_data
 
+    # Greetings always win over awaiting_* state — they are a full reset, identical to /start.
+    # Without this, a user stuck in awaiting_redeposit_check can never escape by saying "hi".
+    if text in {"hi", "hello", "hola", "ola", "bonjour"}:
+        telegram_user_id = update.effective_user.id
+        logger.info(f"[GREETING] '{text}' from telegram_user_id={telegram_user_id} — resetting state")
+        user_data.clear()
+        await reset_user_in_backend(telegram_user_id)
+        await update.message.reply_text(
+            "Please choose your preferred language to proceed:",
+            reply_markup=InlineKeyboardMarkup(LANGUAGE_KEYBOARD),
+        )
+        return
+
     if 'awaiting_uid' in user_data and user_data.get('awaiting_uid'):
         # User is entering their UID
         await handle_uid_input(update, context)
-    
+
     elif 'awaiting_redeposit_check' in user_data and user_data.get('awaiting_redeposit_check'):
         # User claimed they made a deposit, waiting for /checkdeposit or similar
         await update.message.reply_text(
-            "Please click the 'Check Deposit' button below to verify, or send /start to begin again.",
+            "Please click the 'Check Deposit' button below to verify, or send /start (or 'Hi') to begin again.",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("✅ Check Deposit", callback_data="recheck_deposit")
             ]])
         )
-    
-    elif text in {"hi", "hello", "hola", "ola", "bonjour"}:
-        # Show language picker
-        keyboard = [
-            [InlineKeyboardButton("🇧🇷 Portuguese (Brazil)", callback_data="lang_pt-br")],
-            [InlineKeyboardButton("🇫🇷 French", callback_data="lang_fr")],
-            [InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
-            [InlineKeyboardButton("🇪🇸 Spanish", callback_data="lang_es")],
-            [InlineKeyboardButton("🇸🇦 Arabic", callback_data="lang_ar")],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "Please choose your preferred language to proceed:",
-            reply_markup=reply_markup,
-        )
+
     else:
         await update.message.reply_text("Send 'Hi' or 'Hello' to test the bot.")
 
@@ -807,17 +848,9 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     
     # Handle change language
     elif callback_data == 'change_language':
-        keyboard = [
-            [InlineKeyboardButton("🇧🇷 Portuguese (Brazil)", callback_data="lang_pt-br")],
-            [InlineKeyboardButton("🇫🇷 French", callback_data="lang_fr")],
-            [InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
-            [InlineKeyboardButton("🇪🇸 Spanish", callback_data="lang_es")],
-            [InlineKeyboardButton("🇸🇦 Arabic", callback_data="lang_ar")],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             "Please choose your preferred language:",
-            reply_markup=reply_markup,
+            reply_markup=InlineKeyboardMarkup(LANGUAGE_KEYBOARD),
         )
     
     # Handle group selection
