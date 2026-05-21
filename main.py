@@ -412,14 +412,14 @@ async def reply_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif 'awaiting_redeposit_check' in user_data and user_data.get('awaiting_redeposit_check'):
         # User claimed they made a deposit, waiting for /checkdeposit or similar
         await update.message.reply_text(
-            "Please click the 'Check Deposit' button below to verify, or send /start (or 'Hi') to begin again.",
+            "Please click the 'Check Deposit' button below to verify, or send /start to begin again.",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("✅ Check Deposit", callback_data="recheck_deposit")
             ]])
         )
 
     else:
-        await update.message.reply_text("Send 'Hi' or 'Hello' to test the bot.")
+        await update.message.reply_text("Send /start to start the bot.")
 
 
 async def handle_uid_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
