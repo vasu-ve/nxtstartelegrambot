@@ -419,7 +419,10 @@ async def reply_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
     else:
-        await update.message.reply_text("Send /start to start the bot.")
+        await update.message.reply_text(
+            "Contact the support team if you didn't find your ID.\n\n"
+            "If you want to restart, click or type /start."
+        )
 
 
 async def handle_uid_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
