@@ -160,7 +160,7 @@ class InviteLink(models.Model):
         payload = {
             "chat_id": group.chat_id,
             "expire_date": expire_timestamp,
-            # "member_limit": 1,
+            "creates_join_request": True,
         }
 
         # Log the invite creation attempt with detailed info

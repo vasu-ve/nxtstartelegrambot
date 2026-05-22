@@ -4,7 +4,7 @@ import logging
 
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ChatMemberHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ChatJoinRequestHandler, ChatMemberHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 load_dotenv()
 
@@ -246,6 +246,63 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "First, please choose your preferred language:",
         reply_markup=InlineKeyboardMarkup(LANGUAGE_KEYBOARD),
     )
+
+async def handle_chat_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Approve or decline a join request created by an invite link.
+
+    Invite links are now created with creates_join_request=True, so when a user
+    taps a link Telegram fires this update *before* the user is added. We check
+    that the requesting telegram_user_id matches the one who generated the
+    invite for this chat (via the backend), then approve or decline.
+
+    This is the layer that stops a shared link from letting anyone else in:
+    a different telegram_id will not match any pending invite for this chat,
+    so the join request is declined and they never enter the group.
+    """
+    join_request = update.chat_join_request
+    if not join_request:
+        return
+
+    telegram_id = join_request.from_user.id
+    chat_id = join_request.chat.id
+
+    logger.info("="*80)
+    logger.info(f"[JOIN_REQUEST] telegram_user_id={telegram_id} chat_id={chat_id}")
+
+    try:
+        response = await client.post(
+            f"{DJANGO_API_BASE_URL}/invites/validate-join/",
+            json={
+                "telegram_user_id": telegram_id,
+                "chat_id": chat_id,
+            },
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        logger.info(f"[JOIN_REQUEST] validate-join response: {data}")
+
+        if data.get("success"):
+            await context.bot.approve_chat_join_request(chat_id=chat_id, user_id=telegram_id)
+            logger.info(f"[JOIN_REQUEST] ✅ APPROVED user {telegram_id} for chat {chat_id}")
+            logger.info(f"[AUDIT_TRAIL] Approved join: telegram_id={telegram_id}, chat_id={chat_id}, uid={data.get('uid')}")
+        else:
+            reason = data.get("reason", "unknown")
+            logger.warning(f"[JOIN_REQUEST] ❌ DECLINING user {telegram_id} — reason: {reason}")
+            await context.bot.decline_chat_join_request(chat_id=chat_id, user_id=telegram_id)
+            logger.info(f"[AUDIT_TRAIL] Declined join attempt: telegram_id={telegram_id}, chat_id={chat_id}, reason={reason}")
+
+    except Exception as e:
+        logger.error(f"[JOIN_REQUEST] Exception: {type(e).__name__}: {str(e)}", exc_info=True)
+        # On error, decline by default — safer than letting through unverified joins.
+        try:
+            await context.bot.decline_chat_join_request(chat_id=chat_id, user_id=telegram_id)
+            logger.info(f"[JOIN_REQUEST] Declined user {telegram_id} due to validation error")
+        except Exception as decline_error:
+            logger.error(f"[JOIN_REQUEST] Failed to decline: {decline_error}")
+    finally:
+        logger.info("="*80)
+
 
 async def handle_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle new members joining the group.
@@ -1092,6 +1149,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply_greeting))
     app.add_handler(CallbackQueryHandler(handle_callback_query))
+    app.add_handler(ChatJoinRequestHandler(handle_chat_join_request))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_members))
     app.add_handler(CommandHandler("debug", debug_chat))
     # ChatMemberHandler fires for both basic groups AND supergroups (left_chat_member

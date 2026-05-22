@@ -488,10 +488,11 @@ def select_group_and_generate_link(request):
 def validate_join(request):
     """Validate and process user joining a group via invite link."""
     import logging
+    from datetime import timedelta
     from django.utils import timezone as tz
-    
+
     logger = logging.getLogger(__name__)
-    
+
     try:
         data = json.loads(request.body)
         telegram_user_id = data.get("telegram_user_id")
@@ -518,6 +519,27 @@ def validate_join(request):
         ).first()
 
         if not invite:
+            # Idempotency: if this user already had an invite marked 'used' for this
+            # chat in the last 10 minutes, treat as already validated. Handles the
+            # case where chat_join_request already approved + consumed the invite,
+            # and then NEW_CHAT_MEMBERS fires for the same join.
+            recent_threshold = tz.now() - timedelta(minutes=10)
+            recent_used = InviteLink.objects.filter(
+                user=user,
+                status='used',
+                group__chat_id=chat_id,
+                used_at__gte=recent_threshold,
+            ).order_by('-used_at').first()
+
+            if recent_used:
+                logger.info(f"[VALIDATE_JOIN] Recently-used invite found ({recent_used.id}); treating as valid")
+                return JsonResponse({
+                    "success": True,
+                    "message": "Already validated via prior join request",
+                    "user_id": user.id,
+                    "group_id": recent_used.group.id,
+                })
+
             logger.warning(f"[VALIDATE_JOIN] No pending invite found for user {user.id} and chat {chat_id}")
             return JsonResponse({"success": False, "reason": "invite_not_found"})
 
