@@ -198,11 +198,17 @@ def validate_uid_format(uid):
 
 
 LANGUAGE_KEYBOARD = [
-    [InlineKeyboardButton("🇧🇷 Portuguese (Brazil)", callback_data="lang_pt-br")],
-    [InlineKeyboardButton("🇫🇷 French", callback_data="lang_fr")],
-    [InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
-    [InlineKeyboardButton("🇪🇸 Spanish", callback_data="lang_es")],
-    [InlineKeyboardButton("🇸🇦 Arabic", callback_data="lang_ar")],
+    [
+        InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
+        InlineKeyboardButton("🇫🇷 French", callback_data="lang_fr"),
+    ],
+    [
+        InlineKeyboardButton("🇪🇸 Spanish", callback_data="lang_es"),
+        InlineKeyboardButton("🇸🇦 Arabic", callback_data="lang_ar"),
+    ],
+    [
+        InlineKeyboardButton("🇵🇹 Portuguese", callback_data="lang_pt-br"),
+    ],
 ]
 
 
@@ -536,13 +542,13 @@ async def handle_uid_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.warning(f"[UID_INPUT] User not found for customer_id: {uid}")
         
         error_messages = {
-            "pt-br": "❌ Usuário não encontrado!\n\nPor favor, verifique seu ID de cliente e tente novamente.",
-            "fr": "❌ Utilisateur non trouvé!\n\nVeuillez vérifier votre ID de client et réessayer.",
-            "en": "❌ User not found!\n\nPlease verify your customer ID and try again.",
-            "es": "❌ ¡Usuario no encontrado!\n\nPor favor, verifica tu ID de cliente e intenta de nuevo.",
-            "ar": "❌ لم يتم العثور على المستخدم!\n\nيرجى التحقق من معرف العميل الخاص بك والمحاولة مرة أخرى.",
+            "pt-br": "❌ Usuário não encontrado!\n\nPor favor, verifique seu ID de cliente e tente novamente. Se continuar tendo problemas, entre em contato com o suporte: @Team_NextStar 💬",
+            "fr": "❌ Utilisateur non trouvé !\n\nVeuillez vérifier votre ID de client et réessayer. Si vous rencontrez toujours des difficultés, contactez le support : @Team_NextStar 💬",
+            "en": "❌ User not found!\n\nPlease verify your client ID and try again. If you keep having issues, contact support: @Team_NextStar 💬",
+            "es": "❌ ¡Usuario no encontrado!\n\nPor favor, verifica tu ID de cliente e intenta de nuevo. Si sigues teniendo problemas, contacta con el soporte: @Team_NextStar 💬",
+            "ar": "❌ لم يتم العثور على المستخدم!\n\nيرجى التحقق من معرف العميل والمحاولة مرة أخرى. إذا استمرت المشكلة، تواصل مع الدعم: @Team_NextStar 💬",
         }
-        
+
         error_text = error_messages.get(language, "User not found. Please try again.")
         await update.message.reply_text(error_text)
         user_data.pop('awaiting_uid', None)
@@ -580,11 +586,11 @@ async def handle_uid_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.info(f"[UID_INPUT] ✅ Deposit confirmed (status: {deposit_status_str})")
 
         confirm_messages = {
-            "pt-br": f"✅ Depósito confirmado!\n\n👤 Username: {nextstar_username}\n🏦 Corretora: {broker_name}\n\nProsseguindo para seleção de grupo...",
-            "fr": f"✅ Dépôt confirmé!\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n\nPassage à la sélection du groupe...",
-            "en": f"✅ Deposit confirmed!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n\nProceeding to group selection...",
-            "es": f"✅ ¡Depósito confirmado!\n\n👤 Usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n\nProcediendo a la selección de grupo...",
-            "ar": f"✅ تم تأكيد الإيداع!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n\nجاري الانتقال لاختيار المجموعة...",
+            "pt-br": f"✅ Verificação concluída!\n\n👤 Nome de usuário: {nextstar_username}\n🏦 Corretora: {broker_name}\n✓ Primeiro depósito realizado\n\nSelecione seu grupo abaixo",
+            "fr": f"✅ Vérification terminée !\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n✓ Premier dépôt effectué\n\nSélectionnez ci-dessous votre groupe",
+            "en": f"✅ Verification complete!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n✓ First deposit made\n\nSelect your group below",
+            "es": f"✅ ¡Verificación completada!\n\n👤 Nombre de usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n✓ Primer depósito realizado\n\nSelecciona tu grupo a continuación",
+            "ar": f"✅ تم التحقق بنجاح!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n✓ تم الإيداع الأول\n\nاختر مجموعتك أدناه",
         }
 
         confirm_text = confirm_messages.get(language, f"Deposit confirmed! Broker: {broker_name}")
@@ -599,11 +605,11 @@ async def handle_uid_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.info(f"[UID_INPUT] 💵 No deposit detected (status: {deposit_status_str}), showing deposit check button")
         
         deposit_messages = {
-            "pt-br": f"💵 Nenhum depósito detectado!\n\n👤 Username: {nextstar_username}\n🏦 Corretora: {broker_name}\n\n❓ Se você já fez um depósito, clique no botão abaixo para verificar novamente.\n\nSe não fez um depósito ainda, acesse sua conta no broker para fazer um.",
-            "fr": f"💵 Aucun dépôt détecté!\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n\n❓ Si vous avez déjà effectué un dépôt, cliquez sur le bouton ci-dessous pour vérifier à nouveau.\n\nSi vous n'avez pas encore effectué de dépôt, accédez à votre compte chez le courtier pour en effectuer un.",
-            "en": f"💵 No deposit detected!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n\n❓ If you've already made a deposit, click the button below to check again.\n\nIf you haven't made a deposit yet, log into your broker account to make one.",
-            "es": f"💵 ¡No se detectó depósito!\n\n👤 Usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n\n❓ Si ya has realizado un depósito, haz clic en el botón de abajo para verificar de nuevo.\n\nSi aún no has realizado un depósito, inicia sesión en tu cuenta de broker para hacer uno.",
-            "ar": f"💵 لم يتم اكتشاف أي إيداع!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n\n❓ إذا كنت قد قمت بالفعل بإيداع، انقر على الزر أدناه للتحقق مرة أخرى.\n\nإذا لم تقم بعد بإجراء إيداع، قم بتسجيل الدخول إلى حساب الوسيط الخاص بك لإجراء واحد.",
+            "pt-br": f"❌ Nenhum depósito realizado!\n\n👤 Nome de usuário: {nextstar_username}\n🏦 Corretora: {broker_name}\n△ Primeiro depósito realizado\n\n💡 Se você já fez seu primeiro depósito, toque no botão abaixo para verificar novamente.\n\nSe você ainda não fez um depósito, por favor faça-o com um dos nossos brokers parceiros e volte.",
+            "fr": f"❌ Aucun dépôt effectué !\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n△ 1er dépôt effectué\n\n💡 Si vous avez effectué votre premier dépôt, cliquez sur le bouton ci-dessous afin de relancer la vérification.\n\nSi vous n'avez pas encore effectué de dépôt, veuillez le faire auprès d'un de nos brokers partenaires puis revenez.",
+            "en": f"❌ No deposit made!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n△ First deposit made\n\n💡 If you have already made your first deposit, tap the button below to re-check.\n\nIf you haven't made a deposit yet, please do so with one of our partner brokers and come back.",
+            "es": f"❌ ¡Sin depósito realizado!\n\n👤 Nombre de usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n△ Primer depósito realizado\n\n💡 Si ya has realizado tu primer depósito, pulsa el botón de abajo para volver a verificar.\n\nSi aún no has realizado un depósito, hazlo con uno de nuestros brokers asociados y vuelve.",
+            "ar": f"❌ لم يتم إجراء أي إيداع!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n△ تم الإيداع الأول\n\n💡 إذا كنت قد أجريت إيداعك الأول، اضغط على الزر أدناه لإعادة التحقق.\n\nإذا لم تقم بأي إيداع بعد، يرجى إجراؤه لدى أحد وسطائنا الشركاء ثم العودة.",
         }
         
         deposit_text = deposit_messages.get(language, "No deposit detected.")
@@ -676,24 +682,22 @@ async def proceed_to_group_selection(update: Update, context: ContextTypes.DEFAU
     user_data['verified_uid'] = uid
 
     keyboard = []
-    for i, group in enumerate(groups):
-        if i % 2 == 0:
-            keyboard.append([])
-        keyboard[-1].append(
+    for group in groups:
+        keyboard.append([
             InlineKeyboardButton(
-                f"🏘️ {group['chat_title']}",
+                group['chat_title'],
                 callback_data=f"select_group_{group['id']}"
             )
-        )
+        ])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     selection_prompts = {
-        "pt-br": "🎯 Excelente! Agora escolha um grupo para entrar:\n\nSelecione um dos grupos abaixo:",
-        "fr": "🎯 Excellent! Choisissez maintenant un groupe à rejoindre:\n\nSélectionnez l'un des groupes ci-dessous:",
-        "en": "🎯 Great! Now select a group to join:\n\nChoose one of the groups below:",
-        "es": "🎯 ¡Excelente! Ahora elige un grupo para unirte:\n\nSelecciona uno de los grupos a continuación:",
-        "ar": "🎯 ممتاز! اختر الآن مجموعة للانضمام إليها:\n\nاختر إحدى المجموعات أدناه:",
+        "pt-br": "Selecione seu grupo abaixo",
+        "fr": "Sélectionnez ci-dessous votre groupe",
+        "en": "Select your group below",
+        "es": "Selecciona tu grupo a continuación",
+        "ar": "اختر مجموعتك أدناه",
     }
 
     selection_msg = selection_prompts.get(language, "Choose a group:")
@@ -792,18 +796,17 @@ async def handle_group_callback(update: Update, context: ContextTypes.DEFAULT_TY
     logger.info(f"[GROUP_CALLBACK] ✅ Invite link generated: {invite_link}")
 
     confirmation_messages = {
-        "pt-br": f"✅ Você selecionou: {selected_group['chat_title']}\n\n🔗 Seu link de convite pessoal (válido por 15 minutos):\n\n{invite_link}\n\n👆 Clique no link acima para entrar no grupo automaticamente!",
-        "fr": f"✅ Vous avez sélectionné: {selected_group['chat_title']}\n\n🔗 Votre lien d'invitation personnel (valable 15 minutes):\n\n{invite_link}\n\n👆 Cliquez sur le lien ci-dessus pour rejoindre le groupe automatiquement!",
-        "en": f"✅ You selected: {selected_group['chat_title']}\n\n🔗 Your personal invite link (valid for 15 minutes):\n\n{invite_link}\n\n👆 Click the link above to join the group automatically!",
-        "es": f"✅ Seleccionaste: {selected_group['chat_title']}\n\n🔗 Tu enlace de invitación personal (válido por 15 minutos):\n\n{invite_link}\n\n👆 ¡Haz clic en el enlace anterior para unirte automáticamente al grupo!",
-        "ar": f"✅ اخترت: {selected_group['chat_title']}\n\n🔗 رابط الدعوة الشخصي (صالح لمدة 15 دقيقة):\n\n{invite_link}\n\n👆 انقر على الرابط أعلاه للانضمام إلى المجموعة تلقائياً!",
+        "pt-br": f"✅ Você selecionou: {selected_group['chat_title']}\n\n🔑 Seu link de convite pessoal (válido 15 minutos):\n\n{invite_link}\n\n👆 Toque no link acima para entrar no grupo automaticamente!",
+        "fr": f"✅ Vous avez sélectionné: {selected_group['chat_title']}\n\n🔑 Votre lien d'invitation personnel (valable 15 minutes):\n\n{invite_link}\n\n👆 Cliquez sur le lien ci-dessus pour rejoindre le groupe automatiquement !",
+        "en": f"✅ You selected: {selected_group['chat_title']}\n\n🔑 Your personal invite link (valid 15 minutes):\n\n{invite_link}\n\n👆 Tap the link above to join the group automatically!",
+        "es": f"✅ Has seleccionado: {selected_group['chat_title']}\n\n🔑 Tu enlace de invitación personal (válido 15 minutos):\n\n{invite_link}\n\n👆 Pulsa el enlace de arriba para unirte al grupo automáticamente.",
+        "ar": f"✅ لقد اخترت: {selected_group['chat_title']}\n\n🔑 رابط الدعوة الشخصي الخاص بك (صالح لمدة 15 دقيقة):\n\n{invite_link}\n\n👆 اضغط على الرابط أعلاه للانضمام إلى المجموعة تلقائيًا!",
     }
 
     confirmation_msg = confirmation_messages.get(language, f"Selected group: {selected_group['chat_title']}\n\nInvite link: {invite_link}")
 
     keyboard = [[
         InlineKeyboardButton("➕ Join Another Group", callback_data="join_another_group"),
-        InlineKeyboardButton("✅ Done", callback_data="exit_chat")
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -833,17 +836,7 @@ async def handle_join_another_group(update: Update, context: ContextTypes.DEFAUL
     
     await query.edit_message_text(
         text="🌐 Which language group do you want to join next?",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🇧🇷 Portuguese (Brazil)", callback_data="lang_pt-br"),
-        ], [
-            InlineKeyboardButton("🇫🇷 French", callback_data="lang_fr"),
-        ], [
-            InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
-        ], [
-            InlineKeyboardButton("🇪🇸 Spanish", callback_data="lang_es"),
-        ], [
-            InlineKeyboardButton("🇸🇦 Arabic", callback_data="lang_ar"),
-        ]])
+        reply_markup=InlineKeyboardMarkup(LANGUAGE_KEYBOARD),
     )
     logger.info(f"[JOIN_ANOTHER] Showing language selection for next group")
 
@@ -952,11 +945,11 @@ async def handle_deposit_recheck(update: Update, context: ContextTypes.DEFAULT_T
         logger.warning(f"[DEPOSIT_RECHECK] User not found for customer_id: {uid}")
         
         not_found_messages = {
-            "pt-br": "❌ Usuário não encontrado. Verifique seu ID de cliente.",
-            "fr": "❌ Utilisateur non trouvé. Vérifiez votre ID de client.",
-            "en": "❌ User not found. Please verify your customer ID.",
-            "es": "❌ Usuario no encontrado. Verifica tu ID de cliente.",
-            "ar": "❌ لم يتم العثور على المستخدم. تحقق من معرف العميل الخاص بك.",
+            "pt-br": "❌ Usuário não encontrado!\n\nPor favor, verifique seu ID de cliente e tente novamente. Se continuar tendo problemas, entre em contato com o suporte: @Team_NextStar 💬",
+            "fr": "❌ Utilisateur non trouvé !\n\nVeuillez vérifier votre ID de client et réessayer. Si vous rencontrez toujours des difficultés, contactez le support : @Team_NextStar 💬",
+            "en": "❌ User not found!\n\nPlease verify your client ID and try again. If you keep having issues, contact support: @Team_NextStar 💬",
+            "es": "❌ ¡Usuario no encontrado!\n\nPor favor, verifica tu ID de cliente e intenta de nuevo. Si sigues teniendo problemas, contacta con el soporte: @Team_NextStar 💬",
+            "ar": "❌ لم يتم العثور على المستخدم!\n\nيرجى التحقق من معرف العميل والمحاولة مرة أخرى. إذا استمرت المشكلة، تواصل مع الدعم: @Team_NextStar 💬",
         }
         not_found_text = not_found_messages.get(language, "User not found.")
         await query.edit_message_text(text=not_found_text)
@@ -983,11 +976,11 @@ async def handle_deposit_recheck(update: Update, context: ContextTypes.DEFAULT_T
             logger.warning(f"[DEPOSIT_RECHECK] ⚠️ Failed to save UID to database: {error_msg}")
 
         success_messages = {
-            "pt-br": f"✅ Depósito confirmado!\n\n👤 Username: {nextstar_username}\n🏦 Corretora: {broker_name}\n\nProsseguindo para seleção de grupo...",
-            "fr": f"✅ Dépôt confirmé!\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n\nPassage à la sélection du groupe...",
-            "en": f"✅ Deposit confirmed!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n\nProceeding to group selection...",
-            "es": f"✅ ¡Depósito confirmado!\n\n👤 Usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n\nProcediendo a la selección de grupo...",
-            "ar": f"✅ تم تأكيد الإيداع!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n\nجاري الانتقال لاختيار المجموعة...",
+            "pt-br": f"✅ Verificação concluída!\n\n👤 Nome de usuário: {nextstar_username}\n🏦 Corretora: {broker_name}\n✓ Primeiro depósito realizado\n\nSelecione seu grupo abaixo",
+            "fr": f"✅ Vérification terminée !\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n✓ Premier dépôt effectué\n\nSélectionnez ci-dessous votre groupe",
+            "en": f"✅ Verification complete!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n✓ First deposit made\n\nSelect your group below",
+            "es": f"✅ ¡Verificación completada!\n\n👤 Nombre de usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n✓ Primer depósito realizado\n\nSelecciona tu grupo a continuación",
+            "ar": f"✅ تم التحقق بنجاح!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n✓ تم الإيداع الأول\n\nاختر مجموعتك أدناه",
         }
         success_msg = success_messages.get(language, "Deposit confirmed!")
         await query.edit_message_text(text=success_msg)
@@ -1098,25 +1091,35 @@ async def handle_language_selection(update: Update, context: ContextTypes.DEFAUL
         user_data['user_id'] = user_result['user_id']
         
         thanks_responses = {
-            "pt-br": "✅ Obrigado por escolher Português (Brasil).",
-            "fr": "✅ Merci d'avoir choisi Français.",
-            "en": "✅ Thanks for choosing English.",
-            "es": "✅ Gracias por elegir Español.",
-            "ar": "✅ شكراً لاختيار العربية.",
+            "pt-br": "🇵🇹 Obrigado por escolher o português.",
+            "fr": "🇫🇷 Merci d'avoir choisi le français.",
+            "en": "🇬🇧 Thanks for choosing English.",
+            "es": "🇪🇸 Gracias por elegir español.",
+            "ar": "🇸🇦 شكرًا لاختيارك العربية.",
         }
 
         thanks_message = thanks_responses.get(language, "Thanks for your selection.")
         await query.edit_message_text(text=thanks_message)
 
+        wrong_language_hints = {
+            "pt-br": "↩ Idioma errado? Toque em /start para escolher novamente.",
+            "fr": "↩ Mauvaise langue ? Appuyez sur /start pour modifier.",
+            "en": "↩ Wrong language? Tap /start to choose again.",
+            "es": "↩ ¿Idioma equivocado? Pulsa /start para elegir de nuevo.",
+            "ar": "↩ لغة خاطئة؟ اضغط على /start للاختيار مرة أخرى.",
+        }
+        wrong_lang_message = wrong_language_hints.get(language, "Wrong language? Tap /start to choose again.")
+        await query.message.reply_text(wrong_lang_message)
+
         uid_prompt = {
-            "pt-br": "📝 Por favor, insira seu UID (6-8 dígitos) para que possamos verificar seu status de depósito:\n\nExemplo: 123456",
-            "fr": "📝 Veuillez entrer votre UID (6-8 chiffres) afin que nous puissions vérifier votre statut de dépôt:\n\nExemple: 123456",
-            "en": "📝 Please enter your UID (6-8 digits) so we can verify your deposit status:\n\nExample: 123456",
-            "es": "📝 Por favor, ingresa tu UID (6-8 dígitos) para que podamos verificar tu estado de depósito:\n\nEjemplo: 123456",
-            "ar": "📝 يرجى إدخال معرف UID الخاص بك (6-8 أرقام) حتى نتمكن من التحقق من حالة الإيداع:\n\nمثال: 123456",
+            "pt-br": "🔐 Por favor, insira seu UID (6-8 dígitos) para que possamos verificar o status da sua conta.\n\nExemplo: 123456\n\n💡 Você encontrará este número no e-mail de confirmação do broker parceiro escolhido. Ou diretamente no seu perfil do broker depois de fazer login.",
+            "fr": "🔐 Veuillez entrer votre UID (6-8 chiffres) afin que nous puissions vérifier le statut de votre compte.\n\nExemple: 123456\n\n💡 Vous trouverez ce numéro sur l'e-mail de confirmation du broker partenaire choisi. Ou directement sur votre profil broker une fois connecté à celui-ci.",
+            "en": "🔐 Please enter your UID (6-8 digits) so we can verify your account status.\n\nExample: 123456\n\n💡 You will find this number in the confirmation email from your chosen partner broker. Or directly on your broker profile once logged in.",
+            "es": "🔐 Por favor, ingresa tu UID (6-8 dígitos) para que podamos verificar el estado de tu cuenta.\n\nEjemplo: 123456\n\n💡 Encontrarás este número en el correo de confirmación de tu broker socio elegido. O directamente en tu perfil de broker una vez iniciada la sesión.",
+            "ar": "🔐 يرجى إدخال معرف UID الخاص بك (6-8 أرقام) حتى نتمكن من التحقق من حالة حسابك.\n\nمثال: 123456\n\n💡 ستجد هذا الرقم في رسالة التأكيد من الوسيط الشريك الذي اخترته. أو مباشرة في ملفك الشخصي لدى الوسيط بعد تسجيل الدخول.",
         }
 
-        prompt_message = uid_prompt.get(language, "Please enter your UID so we can verify your deposit status.")
+        prompt_message = uid_prompt.get(language, "Please enter your UID so we can verify your account status.")
         await query.message.reply_text(prompt_message)
         
         user_data['awaiting_uid'] = True
