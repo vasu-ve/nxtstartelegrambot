@@ -474,18 +474,33 @@ async def reply_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     elif 'awaiting_redeposit_check' in user_data and user_data.get('awaiting_redeposit_check'):
         # User claimed they made a deposit, waiting for /checkdeposit or similar
+        language = user_data.get('language', 'en')
+        redeposit_reminder_messages = {
+            "pt-br": "Por favor, toque no botão 'Verificar Depósito' abaixo para verificar, ou envie /start para começar novamente.",
+            "fr": "Veuillez cliquer sur le bouton « Vérifier le dépôt » ci-dessous pour vérifier, ou envoyez /start pour recommencer.",
+            "en": "Please click the 'Check Deposit' button below to verify, or send /start to begin again.",
+            "es": "Por favor, pulsa el botón 'Verificar Depósito' abajo para verificar, o envía /start para empezar de nuevo.",
+            "ar": "يرجى الضغط على زر 'تحقق من الإيداع' أدناه للتحقق، أو إرسال /start للبدء من جديد.",
+        }
+        redeposit_reminder_msg = redeposit_reminder_messages.get(language, redeposit_reminder_messages["en"])
         await update.message.reply_text(
-            "Please click the 'Check Deposit' button below to verify, or send /start to begin again.",
+            redeposit_reminder_msg,
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("✅ Check Deposit", callback_data="recheck_deposit")
             ]])
         )
 
     else:
-        await update.message.reply_text(
-            "Contact the support team if you didn't find your ID.\n\n"
-            "If you want to restart, click or type /start."
-        )
+        language = user_data.get('language', 'en')
+        fallback_messages = {
+            "pt-br": "Entre em contato com o suporte se você não encontrou o seu ID.\n\nSe quiser recomeçar, clique ou digite /start.",
+            "fr": "Contactez le support si vous n'avez pas trouvé votre ID.\n\nSi vous souhaitez recommencer, cliquez ou tapez /start.",
+            "en": "Contact the support team if you didn't find your ID.\n\nIf you want to restart, click or type /start.",
+            "es": "Contacta con el soporte si no encontraste tu ID.\n\nSi quieres reiniciar, pulsa o escribe /start.",
+            "ar": "تواصل مع فريق الدعم إذا لم تجد معرفك.\n\nإذا أردت إعادة البدء، اضغط أو اكتب /start.",
+        }
+        fallback_msg = fallback_messages.get(language, fallback_messages["en"])
+        await update.message.reply_text(fallback_msg)
 
 
 async def handle_uid_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -635,6 +650,11 @@ async def proceed_to_group_selection(update: Update, context: ContextTypes.DEFAU
     user_data = context.user_data
     language = user_data.get('language', 'en')
 
+    logger.info(
+        f"[GROUP_SELECTION] Fetching groups for user_id={user_id}, "
+        f"user_data['language']='{language}', joining_another_group={user_data.get('joining_another_group')}"
+    )
+
     groups_result = await get_available_groups(language)
 
     if not groups_result or not groups_result.get('success'):
@@ -675,7 +695,20 @@ async def proceed_to_group_selection(update: Update, context: ContextTypes.DEFAU
         user_data.pop('joining_another_group', None)
         return
 
-    logger.info(f"[GROUP_SELECTION] Found {len(groups)} groups for language {language}")
+    logger.info(f"[GROUP_SELECTION] Found {len(groups)} groups for language '{language}'")
+    for g in groups:
+        logger.info(
+            f"[GROUP_SELECTION]   - id={g.get('id')}, chat_id={g.get('chat_id')}, "
+            f"language='{g.get('language')}', chat_title={g.get('chat_title')!r}"
+        )
+
+    mismatched = [g for g in groups if g.get('language') and g.get('language') != language]
+    if mismatched:
+        logger.warning(
+            f"[GROUP_SELECTION] ⚠️ Backend returned {len(mismatched)} group(s) whose language "
+            f"does not match the requested '{language}'. Check Django /groups/available/ filter "
+            f"and Group.language values in DB."
+        )
 
     user_data['available_groups'] = groups
     user_data['awaiting_group_selection'] = True
@@ -1047,6 +1080,14 @@ async def handle_language_selection(update: Update, context: ContextTypes.DEFAUL
     """Handle language selection from buttons."""
     query = update.callback_query
     user_data = context.user_data
+
+    prev_language = user_data.get('language')
+    callback_data = query.data if query else None
+    logger.info(
+        f"[LANGUAGE_SELECT] callback_data='{callback_data}', parsed language='{language}', "
+        f"previous user_data['language']='{prev_language}'"
+    )
+
     user_data['language'] = language
 
     is_multi_join = user_data.get('joining_another_group', False)
@@ -1074,7 +1115,14 @@ async def handle_language_selection(update: Update, context: ContextTypes.DEFAUL
             user_data['chat_id'] = update.effective_chat.id
             await proceed_to_group_selection(None, context, user_id, uid)
         else:
-            error_msg = "❌ Error: Could not retrieve UID. Please start over with /start"
+            uid_error_messages = {
+                "pt-br": "❌ Erro: Não foi possível recuperar o UID. Por favor, recomece com /start",
+                "fr": "❌ Erreur : Impossible de récupérer l'UID. Veuillez recommencer avec /start",
+                "en": "❌ Error: Could not retrieve UID. Please start over with /start",
+                "es": "❌ Error: No se pudo recuperar el UID. Por favor, comienza de nuevo con /start",
+                "ar": "❌ خطأ: تعذر استرداد UID. يرجى البدء من جديد بـ /start",
+            }
+            error_msg = uid_error_messages.get(language, uid_error_messages["en"])
             await query.edit_message_text(text=error_msg)
             user_data.clear()
         
