@@ -292,6 +292,51 @@ async def handle_chat_join_request(update: Update, context: ContextTypes.DEFAULT
             await context.bot.approve_chat_join_request(chat_id=chat_id, user_id=telegram_id)
             logger.info(f"[JOIN_REQUEST] ✅ APPROVED user {telegram_id} for chat {chat_id}")
             logger.info(f"[AUDIT_TRAIL] Approved join: telegram_id={telegram_id}, chat_id={chat_id}, uid={data.get('uid')}")
+
+            # Post-access welcome + disclaimer, sent in the bot's DM with the user.
+            language = context.user_data.get('language', 'en')
+            post_access_messages = {
+                "pt-br": (
+                    "🔓 Você agora pode acessar os canais privados da comunidade e receber seus primeiros sinais.\n\n"
+                    "Esses alertas não são fornecidos pela NextStar e resultam exclusivamente do compartilhamento voluntário de membros da comunidade.\n\n"
+                    "<i>⚠ O trading envolve riscos significativos de perda de capital. Opere com responsabilidade e nunca invista mais do que pode se permitir perder.</i>\n\n"
+                    "💬 Dúvidas? @team_NextStar 👇"
+                ),
+                "fr": (
+                    "🔓 Vous pouvez désormais accéder aux canaux privés de la communauté et recevoir vos premiers signaux.\n\n"
+                    "Ces alertes ne sont pas proposées par NextStar et résultent uniquement du partage volontaire de membres de la communauté.\n\n"
+                    "<i>⚠ Le trading comporte des risques importants de perte en capital. Tradez de manière responsable et n'investissez jamais plus que ce que vous pouvez vous permettre de perdre.</i>\n\n"
+                    "💬 Des questions ? @team_NextStar 👇"
+                ),
+                "en": (
+                    "🔓 You can now access the community's private channels and receive your first signals.\n\n"
+                    "These alerts are not provided by NextStar and result solely from the voluntary sharing of community members.\n\n"
+                    "<i>⚠ Trading involves significant risks of capital loss. Trade responsibly and never invest more than you can afford to lose.</i>\n\n"
+                    "💬 Questions? @team_NextStar 👇"
+                ),
+                "es": (
+                    "🔓 Ya puedes acceder a los canales privados de la comunidad y recibir tus primeras señales.\n\n"
+                    "Estas alertas no son proporcionadas por NextStar y son únicamente el resultado del intercambio voluntario entre miembros de la comunidad.\n\n"
+                    "<i>⚠ El trading conlleva riesgos significativos de pérdida de capital. Opera de forma responsable y nunca inviertas más de lo que puedas permitirte perder.</i>\n\n"
+                    "💬 ¿Preguntas? @team_NextStar 👇"
+                ),
+                "ar": (
+                    "🔓 يمكنك الآن الوصول إلى القنوات الخاصة بالمجتمع وتلقي إشاراتك الأولى.\n\n"
+                    "هذه التنبيهات ليست مقدمة من NextStar وتنتج فقط عن المشاركة الطوعية من أعضاء المجتمع.\n\n"
+                    "<i>⚠ ينطوي التداول على مخاطر كبيرة لخسارة رأس المال. تداول بمسؤولية ولا تستثمر أبدًا أكثر مما يمكنك تحمل خسارته.</i>\n\n"
+                    "💬 أسئلة؟ @team_NextStar 👇"
+                ),
+            }
+            welcome_msg = post_access_messages.get(language, post_access_messages["en"])
+            try:
+                await context.bot.send_message(
+                    chat_id=telegram_id,
+                    text=welcome_msg,
+                    parse_mode="HTML",
+                )
+                logger.info(f"[JOIN_REQUEST] Sent post-access DM to user {telegram_id} (lang={language})")
+            except Exception as dm_error:
+                logger.warning(f"[JOIN_REQUEST] Failed to send post-access DM to {telegram_id}: {dm_error}")
         else:
             reason = data.get("reason", "unknown")
             logger.warning(f"[JOIN_REQUEST] ❌ DECLINING user {telegram_id} — reason: {reason}")
@@ -601,11 +646,11 @@ async def handle_uid_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.info(f"[UID_INPUT] ✅ Deposit confirmed (status: {deposit_status_str})")
 
         confirm_messages = {
-            "pt-br": f"✅ Verificação concluída!\n\n👤 Nome de usuário: {nextstar_username}\n🏦 Corretora: {broker_name}\n✓ Primeiro depósito realizado\n\nSelecione seu grupo abaixo",
-            "fr": f"✅ Vérification terminée !\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n✓ Premier dépôt effectué\n\nSélectionnez ci-dessous votre groupe",
-            "en": f"✅ Verification complete!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n✓ First deposit made\n\nSelect your group below",
-            "es": f"✅ ¡Verificación completada!\n\n👤 Nombre de usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n✓ Primer depósito realizado\n\nSelecciona tu grupo a continuación",
-            "ar": f"✅ تم التحقق بنجاح!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n✓ تم الإيداع الأول\n\nاختر مجموعتك أدناه",
+            "pt-br": f"✅ Verificação concluída!\n\n👤 Nome de usuário: {nextstar_username}\n🏦 Corretora: {broker_name}\n✓ Primeiro depósito realizado",
+            "fr": f"✅ Vérification terminée !\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n✓ Premier dépôt effectué",
+            "en": f"✅ Verification complete!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n✓ First deposit made",
+            "es": f"✅ ¡Verificación completada!\n\n👤 Nombre de usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n✓ Primer depósito realizado",
+            "ar": f"✅ تم التحقق بنجاح!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n✓ تم الإيداع الأول",
         }
 
         confirm_text = confirm_messages.get(language, f"Deposit confirmed! Broker: {broker_name}")
@@ -620,11 +665,11 @@ async def handle_uid_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.info(f"[UID_INPUT] 💵 No deposit detected (status: {deposit_status_str}), showing deposit check button")
         
         deposit_messages = {
-            "pt-br": f"❌ Nenhum depósito realizado!\n\n👤 Nome de usuário: {nextstar_username}\n🏦 Corretora: {broker_name}\n△ Primeiro depósito realizado\n\n💡 Se você já fez seu primeiro depósito, toque no botão abaixo para verificar novamente.\n\nSe você ainda não fez um depósito, por favor faça-o com um dos nossos brokers parceiros e volte.",
-            "fr": f"❌ Aucun dépôt effectué !\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n△ 1er dépôt effectué\n\n💡 Si vous avez effectué votre premier dépôt, cliquez sur le bouton ci-dessous afin de relancer la vérification.\n\nSi vous n'avez pas encore effectué de dépôt, veuillez le faire auprès d'un de nos brokers partenaires puis revenez.",
-            "en": f"❌ No deposit made!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n△ First deposit made\n\n💡 If you have already made your first deposit, tap the button below to re-check.\n\nIf you haven't made a deposit yet, please do so with one of our partner brokers and come back.",
-            "es": f"❌ ¡Sin depósito realizado!\n\n👤 Nombre de usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n△ Primer depósito realizado\n\n💡 Si ya has realizado tu primer depósito, pulsa el botón de abajo para volver a verificar.\n\nSi aún no has realizado un depósito, hazlo con uno de nuestros brokers asociados y vuelve.",
-            "ar": f"❌ لم يتم إجراء أي إيداع!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n△ تم الإيداع الأول\n\n💡 إذا كنت قد أجريت إيداعك الأول، اضغط على الزر أدناه لإعادة التحقق.\n\nإذا لم تقم بأي إيداع بعد، يرجى إجراؤه لدى أحد وسطائنا الشركاء ثم العودة.",
+            "pt-br": f"❌ Nenhum depósito realizado!\n\n👤 Nome de usuário: {nextstar_username}\n🏦 Corretora: {broker_name}\n⚠️ Primeiro depósito realizado\n\n💡 Se você já fez seu primeiro depósito, toque no botão abaixo para verificar novamente.\n\nSe você ainda não fez um depósito, por favor faça-o com um dos nossos brokers parceiros e volte.",
+            "fr": f"❌ Aucun dépôt effectué !\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n⚠️ 1er dépôt effectué\n\n💡 Si vous avez effectué votre premier dépôt, cliquez sur le bouton ci-dessous afin de relancer la vérification.\n\nSi vous n'avez pas encore effectué de dépôt, veuillez le faire auprès d'un de nos brokers partenaires puis revenez.",
+            "en": f"❌ No deposit made!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n⚠️ First deposit made\n\n💡 If you have already made your first deposit, tap the button below to re-check.\n\nIf you haven't made a deposit yet, please do so with one of our partner brokers and come back.",
+            "es": f"❌ ¡Sin depósito realizado!\n\n👤 Nombre de usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n⚠️ Primer depósito realizado\n\n💡 Si ya has realizado tu primer depósito, pulsa el botón de abajo para volver a verificar.\n\nSi aún no has realizado un depósito, hazlo con uno de nuestros brokers asociados y vuelve.",
+            "ar": f"❌ لم يتم إجراء أي إيداع!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n⚠️ تم الإيداع الأول\n\n💡 إذا كنت قد أجريت إيداعك الأول، اضغط على الزر أدناه لإعادة التحقق.\n\nإذا لم تقم بأي إيداع بعد، يرجى إجراؤه لدى أحد وسطائنا الشركاء ثم العودة.",
         }
         
         deposit_text = deposit_messages.get(language, "No deposit detected.")
@@ -1009,11 +1054,11 @@ async def handle_deposit_recheck(update: Update, context: ContextTypes.DEFAULT_T
             logger.warning(f"[DEPOSIT_RECHECK] ⚠️ Failed to save UID to database: {error_msg}")
 
         success_messages = {
-            "pt-br": f"✅ Verificação concluída!\n\n👤 Nome de usuário: {nextstar_username}\n🏦 Corretora: {broker_name}\n✓ Primeiro depósito realizado\n\nSelecione seu grupo abaixo",
-            "fr": f"✅ Vérification terminée !\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n✓ Premier dépôt effectué\n\nSélectionnez ci-dessous votre groupe",
-            "en": f"✅ Verification complete!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n✓ First deposit made\n\nSelect your group below",
-            "es": f"✅ ¡Verificación completada!\n\n👤 Nombre de usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n✓ Primer depósito realizado\n\nSelecciona tu grupo a continuación",
-            "ar": f"✅ تم التحقق بنجاح!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n✓ تم الإيداع الأول\n\nاختر مجموعتك أدناه",
+            "pt-br": f"✅ Verificação concluída!\n\n👤 Nome de usuário: {nextstar_username}\n🏦 Corretora: {broker_name}\n✓ Primeiro depósito realizado",
+            "fr": f"✅ Vérification terminée !\n\n👤 Nom d'utilisateur: {nextstar_username}\n🏦 Courtier: {broker_name}\n✓ Premier dépôt effectué",
+            "en": f"✅ Verification complete!\n\n👤 Username: {nextstar_username}\n🏦 Broker: {broker_name}\n✓ First deposit made",
+            "es": f"✅ ¡Verificación completada!\n\n👤 Nombre de usuario: {nextstar_username}\n🏦 Corredor: {broker_name}\n✓ Primer depósito realizado",
+            "ar": f"✅ تم التحقق بنجاح!\n\n👤 اسم المستخدم: {nextstar_username}\n🏦 الوسيط: {broker_name}\n✓ تم الإيداع الأول",
         }
         success_msg = success_messages.get(language, "Deposit confirmed!")
         await query.edit_message_text(text=success_msg)
