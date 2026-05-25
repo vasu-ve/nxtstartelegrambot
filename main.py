@@ -1230,6 +1230,23 @@ async def handle_language_selection(update: Update, context: ContextTypes.DEFAUL
 
 async def debug_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("CHAT ID:", update.effective_chat.id)
+
+
+async def get_channel_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reply with this chat's ID and title. Group/supergroup/channel only."""
+    chat = update.effective_chat
+    if chat is None or update.message is None:
+        return
+
+    if chat.type not in ("group", "supergroup", "channel"):
+        return
+
+    title = chat.title or "(untitled)"
+    text = (
+        f"<b>Chat ID:</b> <code>{chat.id}</code>\n"
+        f"<b>Title:</b> {title}"
+    )
+    await update.message.reply_text(text, parse_mode="HTML")
     
 def main() -> None:
     """Start the bot."""
@@ -1248,6 +1265,7 @@ def main() -> None:
     app.add_handler(ChatJoinRequestHandler(handle_chat_join_request))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_members))
     app.add_handler(CommandHandler("debug", debug_chat))
+    app.add_handler(CommandHandler("get_channel_chat_id", get_channel_chat_id))
     # ChatMemberHandler fires for both basic groups AND supergroups (left_chat_member
     # service messages are NOT delivered for supergroup leaves).
     app.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
